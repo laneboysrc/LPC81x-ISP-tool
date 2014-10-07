@@ -51,8 +51,9 @@ import sys
 import serial
 import argparse
 
+from intelhex import IntelHex, HexRecordError
 
-VERSION = "v1.0"
+VERSION = "v1.1"
 
 
 # Code Read Protection (CRP) address and patterns
@@ -341,7 +342,7 @@ def erase(uart):
 
 def program(uart, image_file, allow_code_protection=False):
     '''
-    Write the given binary image file into the flash memory.
+    Write the given binary (or IntelHex) image file into the flash memory.
 
     The image is checked whether it contains any of the code protection
     values, and flashing is aborted (unless instructed with a flag)
@@ -350,8 +351,16 @@ def program(uart, image_file, allow_code_protection=False):
     Also the checksum of the vectors that the ISP uses to detect valid
     flash is generated and added to the image before flashing.
     '''
+    try:
+        hexfile = IntelHex()
+        hexfile.fromfile(image_file, format='hex')
+        image_data = bytearray(hexfile.tobinarray())
 
-    image_data = bytearray(image_file.read())
+    except HexRecordError:
+        # Not a valid HEX file, so assume we are dealing with a binary image
+        image_file.seek(0)
+        image_data = bytearray(image_file.read())
+
     image_file.close()
 
     # Pad image_data to a multiple of PAGE_SIZE (flash page size, which is
@@ -577,7 +586,7 @@ def parse_commandline():
         dest='program',
         metavar='image.bin',
         type=argparse.FileType('rb'),
-        help="write a binary image to the MCU flash memory.")
+        help="write a binary (or IntelHex) image to the MCU flash memory.")
 
     write_group.add_argument("--allow-code-protection",
         action='store_true',
