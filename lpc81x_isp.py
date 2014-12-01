@@ -53,7 +53,7 @@ import argparse
 
 from intelhex import IntelHex, HexRecordError
 
-VERSION = "v1.1"
+VERSION = "v1.2"
 
 
 # Code Read Protection (CRP) address and patterns
@@ -263,7 +263,7 @@ def get_flash_size(uart):
         0x00008110: 8 * 1024,       # LPC811M001JDH16
         0x00008120: 16 * 1024,      # PC812M101JDH16
         0x00008121: 16 * 1024,      # LPC812M101JD20
-        0x00008122: 164 * 1024}     # LPC812M101JDH20, LPC812M101JTB16
+        0x00008122: 16 * 1024}     # LPC812M101JDH20, LPC812M101JTB16
 
     part_id, _ = read_part_id(uart)
 
