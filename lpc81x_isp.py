@@ -212,6 +212,47 @@ def send_command(uart, command):
             (command, response.strip()), response.strip())
 
 
+def read_image_file(image_file):
+    '''
+    Read the given image file. First we try to read the file as Intel-hex, if
+    that fails we assume it is a binary image.
+
+    The file handle is closed before returning the IntelHex object containing
+    the image data.
+    '''
+
+    hexfile = IntelHex()
+    try:
+        hexfile.fromfile(image_file, format='hex')
+
+    except HexRecordError:
+        # Not a valid HEX file, so assume we are dealing with a binary image
+        image_file.seek(0)
+        hexfile.fromfile(image_file, format='bin')
+
+    image_file.close()
+    return hexfile
+
+
+def append_signature(hexfile):
+    ''' Calculate the signature that the ISP uses to detect "valid code" '''
+
+    signature = 0
+    for vector in range(0, 7 * 4, 4):
+        signature = signature + (
+            (hexfile[vector + 3] << 24) +
+            (hexfile[vector + 2] << 16) +
+            (hexfile[vector + 1] << 8) +
+            (hexfile[vector]))
+    signature = (signature ^ 0xffffffff) + 1    # Two's complement
+
+    vector8 = 28
+    hexfile[vector8 + 3] = (signature >> 24) & 0xff
+    hexfile[vector8 + 2] = (signature >> 16) & 0xff
+    hexfile[vector8 + 1] = (signature >> 8) & 0xff
+    hexfile[vector8] = signature& 0xff
+
+
 def read_part_id(uart):
     '''
     Read the Part ID from the MCU and decode it in human readable form.
@@ -265,7 +306,7 @@ def get_flash_size(uart):
         0x00008110: 8 * 1024,       # LPC811M001JDH16
         0x00008120: 16 * 1024,      # PC812M101JDH16
         0x00008121: 16 * 1024,      # LPC812M101JD20
-        0x00008122: 16 * 1024}     # LPC812M101JDH20, LPC812M101JTB16
+        0x00008122: 16 * 1024}      # LPC812M101JDH20, LPC812M101JTB16
 
     part_id, _ = read_part_id(uart)
 
@@ -360,16 +401,7 @@ def program(uart, image_file, allow_code_protection=False):
     flash memory.
     '''
 
-    hexfile = IntelHex()
-    try:
-        hexfile.fromfile(image_file, format='hex')
-
-    except HexRecordError:
-        # Not a valid HEX file, so assume we are dealing with a binary image
-        image_file.seek(0)
-        hexfile.fromfile(image_file, format='bin')
-
-    image_file.close()
+    hexfile = read_image_file(image_file)
     used_sectors = sorted(Counter(
         address // SECTOR_SIZE for address in hexfile.addresses()).keys())
 
@@ -413,20 +445,7 @@ def program(uart, image_file, allow_code_protection=False):
 
 
     # Calculate the signature that the ISP uses to detect "valid code"
-    signature = 0
-    for vector in range(0, 7 * 4, 4):
-        signature = signature + (
-            (hexfile[vector + 3] << 24) +
-            (hexfile[vector + 2] << 16) +
-            (hexfile[vector + 1] << 8) +
-            (hexfile[vector]))
-    signature = (signature ^ 0xffffffff) + 1    # Two's complement
-
-    vector8 = 28
-    hexfile[vector8 + 3] = (signature >> 24) & 0xff
-    hexfile[vector8 + 2] = (signature >> 16) & 0xff
-    hexfile[vector8 + 1] = (signature >> 8) & 0xff
-    hexfile[vector8] = signature& 0xff
+    append_signature(hexfile)
 
 
     # Unlock the chip with the magic number
@@ -458,46 +477,25 @@ def compare(uart, image_file):
     Returns True on match and False on mismatch.
     '''
 
-    image_data = bytearray(image_file.read())
-    image_file.close()
+    hexfile = read_image_file(image_file)
+    used_pages = sorted(Counter(
+        address // PAGE_SIZE for address in hexfile.addresses()).keys())
 
-    # Pad image_data to a multiple of PAGE_SIZE (flash page size, which is
-    # 64 bytes)
-    if len(image_data) % PAGE_SIZE:
-        image_data = image_data + bytearray(
-            '\xff' * (PAGE_SIZE - (len(image_data) % PAGE_SIZE)))
+    append_signature(hexfile)
 
-    # Calculate the signature that the ISP uses to detect "valid code"
-    if len(image_data) >= 32:
-        signature = 0
-        for vector in range(0, 7 * 4, 4):
-            signature = signature + (
-                (image_data[vector + 3] << 24) +
-                (image_data[vector + 2] << 16) +
-                (image_data[vector + 1] << 8) +
-                (image_data[vector]))
-        signature = (signature ^ 0xffffffff) + 1    # Two's complement
-
-        vector8 = 28
-        image_data[vector8 + 3] = (signature >> 24) & 0xff
-        image_data[vector8 + 2] = (signature >> 16) & 0xff
-        image_data[vector8 + 1] = (signature >> 8) & 0xff
-        image_data[vector8] = signature& 0xff
-
-    address = 0
-    while len(image_data):
-        page_data = image_data[0:PAGE_SIZE]
-        del image_data[0:PAGE_SIZE]
-        send_command(uart, "W {:d} {:d}".format(RAM_ADDRESS, len(page_data)))
+    for page in used_pages:
+        address = page * PAGE_SIZE
+        last_address = address + PAGE_SIZE - 1
+        page_data = hexfile.tobinstr(start=address, end=last_address)
+        send_command(uart, "W {:d} {:d}".format(RAM_ADDRESS, PAGE_SIZE))
         uart.write(page_data)
         try:
             send_command(uart, "M {:d} {:d} {:d}".format(
-                address, RAM_ADDRESS, len(page_data)))
+                address, RAM_ADDRESS, PAGE_SIZE))
         except ISPException as error:
             if error.response == "10":
                 return False
             raise error
-        address = address + len(page_data)
     return True
 
 
