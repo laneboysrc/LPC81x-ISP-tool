@@ -46,10 +46,12 @@ This utility allows access to most of the ISP functions.
 # For more information, please refer to <http://unlicense.org>
 
 from __future__ import print_function
+from __future__ import division
 
 import sys
 import serial
 import argparse
+from collections import Counter
 
 from intelhex import IntelHex, HexRecordError
 
@@ -75,7 +77,7 @@ CRP3 = 0x43218765
 # RAM start address we use for programming and the Go command. We use
 # 0x10000300 because everything below may be locked by CRP.
 RAM_BASE_ADDRESS = 0x10000000
-RAM_ADDRESS = RAM_BASE_ADDRESS + 0x0300
+RAM_ADDRESS = RAM_BASE_ADDRESS + 0x300
 
 # The first 80 bytes are retained during reset. This is useful for debugging.
 RAM_SURVIVORS = 0x50
@@ -350,95 +352,103 @@ def program(uart, image_file, allow_code_protection=False):
 
     Also the checksum of the vectors that the ISP uses to detect valid
     flash is generated and added to the image before flashing.
+
+    If an IntelHex file is given, only the flash sectors were data is present
+    in the image file are erased and programmed. This allows partial flashing,
+    and preservation of persistent data between software upgrades.
+    The --erase command can be used before programming to erase the whole
+    flash memory.
     '''
+
+    hexfile = IntelHex()
     try:
-        hexfile = IntelHex()
         hexfile.fromfile(image_file, format='hex')
-        image_data = bytearray(hexfile.tobinarray())
 
     except HexRecordError:
         # Not a valid HEX file, so assume we are dealing with a binary image
         image_file.seek(0)
-        image_data = bytearray(image_file.read())
+        hexfile.fromfile(image_file, format='bin')
 
     image_file.close()
+    used_sectors = sorted(Counter(
+        address // SECTOR_SIZE for address in hexfile.addresses()).keys())
 
-    # Pad image_data to a multiple of PAGE_SIZE (flash page size, which is
-    # 64 bytes)
-    if len(image_data) % PAGE_SIZE:
-        image_data = image_data + bytearray(
-            b'\xff' * (PAGE_SIZE - (len(image_data) % PAGE_SIZE)))
+
+    # Ensure the image is not emtpy
+    if hexfile.minaddr() == None:
+        raise ISPException('ERROR: image file is empty')
+
 
     # Ensure the image fits into the flash
     flash_size = get_flash_size(uart)
-    if len(image_data) > flash_size:
+    flash_size = 16384
+    if hexfile.maxaddr() >= flash_size:
         raise ISPException('ERROR: image too large for the flash memory size')
-    if len(image_data) == 0:
-        raise ISPException('ERROR: image file is empty')
+
 
     # Abort if the Code Read Protection in the image contains one of the
     # special patterns. We don't want to lock us out of the chip...
     if not allow_code_protection:
-        if len(image_data) >= CRP_ADDRESS + 4:
-            pattern = ((image_data[CRP_ADDRESS + 3] << 24) +
-                (image_data[CRP_ADDRESS + 2] << 16) +
-                (image_data[CRP_ADDRESS + 1] << 8) +
-                image_data[CRP_ADDRESS])
+        pattern = ((hexfile[CRP_ADDRESS + 3] << 24) +
+            (hexfile[CRP_ADDRESS + 2] << 16) +
+            (hexfile[CRP_ADDRESS + 1] << 8) +
+            hexfile[CRP_ADDRESS])
 
-            if pattern == NO_ISP:
-                raise ISPException(
-                    'ERROR: NO_ISP code read protection detected in image ' +
-                    'file')
+        if pattern == NO_ISP:
+            raise ISPException(
+                'ERROR: NO_ISP code read protection detected in image ' +
+                'file')
 
-            if pattern == CRP1:
-                raise ISPException(
-                    'ERROR: CRP1 code read protection detected in image file')
+        if pattern == CRP1:
+            raise ISPException(
+                'ERROR: CRP1 code read protection detected in image file')
 
-            if pattern == CRP2:
-                raise ISPException(
-                    'ERROR: CRP2 code read protection detected in image file')
+        if pattern == CRP2:
+            raise ISPException(
+                'ERROR: CRP2 code read protection detected in image file')
 
-            if pattern == CRP3:
-                raise ISPException(
-                    'ERROR: CRP3 code read protection detected in image file')
+        if pattern == CRP3:
+            raise ISPException(
+                'ERROR: CRP3 code read protection detected in image file')
+
 
     # Calculate the signature that the ISP uses to detect "valid code"
-    if len(image_data) >= 32:
-        signature = 0
-        for vector in range(0, 7 * 4, 4):
-            signature = signature + (
-                (image_data[vector + 3] << 24) +
-                (image_data[vector + 2] << 16) +
-                (image_data[vector + 1] << 8) +
-                (image_data[vector]))
-        signature = (signature ^ 0xffffffff) + 1    # Two's complement
+    signature = 0
+    for vector in range(0, 7 * 4, 4):
+        signature = signature + (
+            (hexfile[vector + 3] << 24) +
+            (hexfile[vector + 2] << 16) +
+            (hexfile[vector + 1] << 8) +
+            (hexfile[vector]))
+    signature = (signature ^ 0xffffffff) + 1    # Two's complement
 
-        vector8 = 28
-        image_data[vector8 + 3] = (signature >> 24) & 0xff
-        image_data[vector8 + 2] = (signature >> 16) & 0xff
-        image_data[vector8 + 1] = (signature >> 8) & 0xff
-        image_data[vector8] = signature& 0xff
+    vector8 = 28
+    hexfile[vector8 + 3] = (signature >> 24) & 0xff
+    hexfile[vector8 + 2] = (signature >> 16) & 0xff
+    hexfile[vector8 + 1] = (signature >> 8) & 0xff
+    hexfile[vector8] = signature& 0xff
+
 
     # Unlock the chip with the magic number
     send_command(uart, "U 23130")
 
-    # Erase the sectors used by the image
-    last_sector = (len(image_data) - 1) // SECTOR_SIZE
-    send_command(uart, "P 0 {:d}".format(last_sector))
-    send_command(uart, "E 0 {:d}".format(last_sector))
 
     # Program the image
-    address = 0
-    while len(image_data):
-        page_data = image_data[0:PAGE_SIZE]
-        del image_data[0:PAGE_SIZE]
-        send_command(uart, "W {:d} {:d}".format(RAM_ADDRESS, PAGE_SIZE))
-        uart.write(page_data)
-        send_command(uart, "P 0 {:d}".format(last_sector))
+    for sector in used_sectors:
+        # Erase the sector
+        send_command(uart, "P {sector:d} {sector:d}".format(sector=sector))
+        send_command(uart, "E {sector:d} {sector:d}".format(sector=sector))
+
+        address = sector * SECTOR_SIZE
+        last_address = address + SECTOR_SIZE - 1
+
+        send_command(uart, "W {:d} {:d}".format(RAM_ADDRESS, SECTOR_SIZE))
+        uart.write(hexfile.tobinstr(start=address, end=last_address))
+        send_command(uart, "P {sector:d} {sector:d}".format(sector=sector))
         send_command(uart, "C {:d} {:d} {:d}".format(
-            address, RAM_ADDRESS, PAGE_SIZE))
-        address = address + PAGE_SIZE
-    return address
+            address, RAM_ADDRESS, SECTOR_SIZE))
+
+    return hexfile.maxaddr() - hexfile.minaddr() + 1
 
 
 def compare(uart, image_file):
