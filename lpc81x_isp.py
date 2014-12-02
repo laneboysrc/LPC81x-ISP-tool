@@ -51,6 +51,7 @@ from __future__ import division
 import sys
 import serial
 import argparse
+from time import sleep
 from collections import Counter
 
 from intelhex import IntelHex, HexRecordError
@@ -100,7 +101,7 @@ class ISPException(Exception):
         self.response = response
 
 
-def open_isp(port):
+def open_isp(port, wait=False):
     '''
     Open the given serial port and synchronize with the ISP in the LPC81x.
 
@@ -127,73 +128,86 @@ def open_isp(port):
     except serial.SerialException as error:
         raise ISPException('ERROR: {}'.format(error))
 
-    uart.write(b"?")
-    uart.flush()
+    if wait:
+        print("Waiting for LPC81x to enter ISP mode...")
 
-    response = uart.readline()
-    if response == b"Synchronized\r\n":
-        uart.write(b"Synchronized\r\n")
+    while True:
         uart.flush()
-        uart.readline()             # Discard echo
-
-        response = uart.readline().decode("ASCII")
-        if response != "OK\r\n":
-            raise ISPException('ERROR: Expected "OK" after sending ' +
-		        '"Synchronized", but received "{}"'.format(response), response)
-
-        # Send crystal frequency in kHz (always 12 MHz for the LPC81x)
-        uart.write(b"12000\r\n")
-        uart.flush()
-        uart.readline()             # Discard echo
-
-        response = uart.readline().decode("ASCII")
-        if response != "OK\r\n":
-            raise ISPException('ERROR: Expected "OK" after sending crystal ' +
-		        'frequency, but received "{}"'.format(response), response)
-
-        uart.write(b"A 0\r\n")       # Turn ECHO off
-        uart.flush()
-        uart.readline()             # Discard (last) echo
-
-        response = uart.readline().decode("ASCII")
-        if response != "0\r\n":
-            raise ISPException('ERROR: Expected "0" after turning ECHO off, ' +
-                'but received "{}"'.format(response), response)
-
-    elif response == b"?":
-        # We may already be in ISP mode, with ECHO being on.
-        # We terminate with CR/LF, which should respond with "1\r\n" because
-        # '?' is an invalid command. We have to skip the ECHOed CR/LF though!
-        uart.write(b"\r\n")
-        uart.flush()
-        uart.readline()             # Discard echo
-
-        response = uart.readline().decode("ASCII")
-        if response != "1\r\n":
-            raise ISPException("ERROR: LPC81x not in ISP mode.")
-
-        uart.write(b"A 0\r\n")       # Turn ECHO off
-        uart.flush()
-        uart.readline()             # Discard (last) echo
-
-        response = uart.readline().decode("ASCII")
-        if response != "0\r\n":
-            raise ISPException('ERROR: Expected "0" after turning ECHO off, ' +
-                'but received "{}"'.format(response), response)
-
-    else:
-        # We may already be in ISP mode, with ECHO being off.
-        # We send a CR/LF, which should respond with "1\r\n" because
-        # '?' is an invalid command.
-        uart.write(b"\r\n")
+        uart.write(b"?")
         uart.flush()
 
-        response = uart.readline().decode("ASCII")
-        if response != "1\r\n":
-            raise ISPException("ERROR: LPC81x not in ISP mode.")
+        response = uart.readline()
+        if response == b"Synchronized\r\n":
+            uart.write(b"Synchronized\r\n")
+            uart.flush()
+            uart.readline()             # Discard echo
 
-    uart.timeout = 5
-    return uart
+            response = uart.readline().decode("ASCII", errors="replace")
+            if response != "OK\r\n":
+                raise ISPException('ERROR: Expected "OK" after sending '
+    		        '"Synchronized", but received "{}"'.format(response), response)
+
+            # Send crystal frequency in kHz (always 12 MHz for the LPC81x)
+            uart.write(b"12000\r\n")
+            uart.flush()
+            uart.readline()             # Discard echo
+
+            response = uart.readline().decode("ASCII", errors="replace")
+            if response != "OK\r\n":
+                raise ISPException('ERROR: Expected "OK" after sending crystal '
+    		        'frequency, but received "{}"'.format(response), response)
+
+            uart.write(b"A 0\r\n")       # Turn ECHO off
+            uart.flush()
+            uart.readline()             # Discard (last) echo
+
+            response = uart.readline().decode("ASCII", errors="replace")
+            if response != "0\r\n":
+                raise ISPException('ERROR: Expected "0" after turning ECHO '
+                    'off, but received "{}"'.format(response), response)
+            uart.timeout = 5
+            return uart
+
+        elif response == b"?":
+            # We may already be in ISP mode, with ECHO being on.
+            # We terminate with CR/LF, which should respond with "1\r\n" because
+            # '?' is an invalid command.
+            # We have to skip the ECHOed CR/LF though!
+            uart.write(b"\r\n")
+            uart.flush()
+            uart.readline()             # Discard echo
+
+            response = uart.readline().decode("ASCII", errors="replace")
+            if response != "1\r\n":
+                if not wait:
+                    raise ISPException("ERROR: LPC81x not in ISP mode.")
+            else:
+                uart.write(b"A 0\r\n")       # Turn ECHO off
+                uart.flush()
+                uart.readline()             # Discard (last) echo
+
+                response = uart.readline().decode("ASCII", errors="replace")
+                if response != "0\r\n":
+                    raise ISPException('ERROR: Expected "0" after turning ECHO '
+                        'off, but received "{}"'.format(response), response)
+                uart.timeout = 5
+                return uart
+
+        else:
+            # We may already be in ISP mode, with ECHO being off.
+            # We send a CR/LF, which should respond with "1\r\n" because
+            # '?' is an invalid command.
+            uart.write(b"\r\n")
+            uart.flush()
+
+            response = uart.readline().decode("ASCII", errors="replace")
+            if response == "1\r\n":
+                uart.timeout = 5
+                return uart
+            if not wait:
+                raise ISPException("ERROR: LPC81x not in ISP mode.")
+
+        sleep(0.3)
 
 
 def send_command(uart, command):
@@ -540,11 +554,12 @@ def parse_commandline():
     read_group = parser.add_argument_group('Read and compare functions')
     write_group = parser.add_argument_group('Erase and write functions')
     run_group = parser.add_argument_group('Code execution functions')
+    convenience_group = parser.add_argument_group('Convenience functions')
 
     parser.add_argument("-p", "--port",
         dest='port',
         default="/dev/ttyUSB0",
-        help="serial port where the LPC81x is connected to. Defaults to " +
+        help="serial port where the LPC81x is connected to. Defaults to "
             "/dev/ttyUSB0.")
 
     parser.add_argument("-v", "--version",
@@ -570,7 +585,7 @@ def parse_commandline():
     read_group.add_argument("-s", "--survivors",
         dest='survivors',
         action='store_true',
-        help=("dump the fist {:d} bytes of RAM, which are retained during " +
+        help=("dump the fist {:d} bytes of RAM, which are retained during "
             "reset").format(RAM_SURVIVORS))
 
     read_group.add_argument("-r", "--read",
@@ -598,13 +613,18 @@ def parse_commandline():
 
     write_group.add_argument("--allow-code-protection",
         action='store_true',
-        help="allow code protection. Only applies when flashing a new image. " +
-            "WARNING: this may potentially prevent using ISP after the next " +
+        help="allow code protection. Only applies when flashing a new image. "
+            "WARNING: this may potentially prevent using ISP after the next "
             "reset!")
 
     run_group.add_argument("-g", "--go", "--run",
         action='store_true',
         help="run the application by performing a system reset.")
+
+    convenience_group.add_argument("--wait", "--ready",
+        action='store_true',
+        help="wait unit ISP becomes ready. If not specified the program will "
+        "terminate immediately when the LPC81x is not in ISP mode.")
 
     args = parser.parse_args()
 
@@ -631,7 +651,7 @@ def main():
         sys.exit(0)
 
     try:
-        uart = open_isp(args.port)
+        uart = open_isp(args.port, args.wait)
 
         if args.part_id:
             part_id, part_name = read_part_id(uart)
