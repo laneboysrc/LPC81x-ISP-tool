@@ -17,7 +17,7 @@ This utility allows access to most of the ISP functions.
 #
 # E-mail: laneboysrc@gmail.com
 #
-# Tested with Python version 2.7 and 3.4
+# Tested with Python version 2.7
 
 
 # This is free and unencumbered software released into the public domain.
