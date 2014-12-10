@@ -54,14 +54,28 @@ from __future__ import print_function
 from __future__ import division
 
 import sys
-import serial
 import argparse
 import platform
 import os
 from time import sleep
 from collections import Counter
 
-from intelhex import IntelHex, HexRecordError
+try:
+    import serial
+    import serial.tools.list_ports
+except ImportError:
+    print("Missing the py-serial module. Please install it from\n"
+        "    http://sourceforge.net/projects/pyserial/\n")
+    raw_input("Press Enter to terminate this window...")
+    sys.exit(1)
+
+try:
+    from intelhex import IntelHex, HexRecordError
+except ImportError:
+    print("Missing the intelhex module. Please install it from\n"
+        "    https://launchpad.net/intelhex/\n")
+    raw_input("Press Enter to terminate this window...")
+    sys.exit(1)
 
 
 VERSION = "v1.3"
@@ -793,7 +807,7 @@ def gui(args):
             ''' Program the selected firmware image '''
             with open(self.firmware_image.get()) as image_file:
                 try:
-                    uart = open_isp(args.port, args.wait)
+                    uart = open_isp(self.port.get())
 
                     self.add_message("Programming ...")
                     program(uart, image_file,
