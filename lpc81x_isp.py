@@ -485,7 +485,7 @@ def program(uart, image_file, allow_code_protection=False, progress_cb=None):
     # Program the image
     for index, sector in enumerate(used_sectors):
         if progress_cb is not None:
-            progress_cb(float(index) / used_sectors.length())
+            progress_cb(float(index) / len(used_sectors))
 
         # Erase the sector
         send_command(uart, "P {sector:d} {sector:d}".format(sector=sector))
@@ -499,6 +499,9 @@ def program(uart, image_file, allow_code_protection=False, progress_cb=None):
         send_command(uart, "P {sector:d} {sector:d}".format(sector=sector))
         send_command(uart, "C {:d} {:d} {:d}".format(
             address, RAM_ADDRESS, SECTOR_SIZE))
+
+    if progress_cb is not None:
+        progress_cb(1.0)
 
     return hexfile.maxaddr() - hexfile.minaddr() + 1
 
@@ -801,6 +804,7 @@ def gui(args):
         def progress_callback(self, percent):
             ''' Callback function to update the progress bar '''
             self.progress.set(percent * 100)
+            self.root.update()
 
 
         def program(self):
