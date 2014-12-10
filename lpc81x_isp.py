@@ -11,6 +11,11 @@ See "Chapter 22: LPC81x Flash ISP and IAP programming" of version
 Rev. 1.6 of the LPC81x User manual (UM10601.pdf) for details.
 
 This utility allows access to most of the ISP functions.
+
+Required 3rd party modules:
+    py-serial   http://sourceforge.net/projects/pyserial/
+    intelhex    https://launchpad.net/intelhex/
+
 '''
 
 # Author: Werner Lane
@@ -51,12 +56,17 @@ from __future__ import division
 import sys
 import serial
 import argparse
+import platform
+import os
 from time import sleep
 from collections import Counter
 
 from intelhex import IntelHex, HexRecordError
 
-VERSION = "v1.2"
+
+VERSION = "v1.3"
+
+PLATFORM = platform.system()
 
 
 # Code Read Protection (CRP) address and patterns
@@ -120,7 +130,6 @@ def open_isp(port, wait=False):
 
     It raises ISPException() exception when things go wrong.
     '''
-
     try:
         # A timeout of 100 ms is enough unless we use a really slow baud rate
         # like 300
@@ -271,7 +280,6 @@ def read_part_id(uart):
     '''
     Read the Part ID from the MCU and decode it in human readable form.
     '''
-
     known_parts = {
         0x00008100: "LPC810M021FN8",
         0x00008110: "LPC811M001JDH16",
@@ -294,7 +302,6 @@ def read_uid(uart):
     '''
     Read the Unique ID from the MCU.
     '''
-
     send_command(uart, "N")
     return [int(uart.readline().strip(), 10) for dummy in range(4)]
 
@@ -303,7 +310,6 @@ def read_boot_code_version(uart):
     '''
     Read the version number of the boot code from the MCU.
     '''
-
     send_command(uart, "K")
     return (uart.readline().decode("ASCII").strip(),
             uart.readline().decode("ASCII").strip())
@@ -314,7 +320,6 @@ def get_flash_size(uart):
     Obtain the size of the Flash memory from the LPC81x.
     If we are unable to identify the part we assume a default of 4 KBytes.
     '''
-
     known_parts = {
         0x00008100: 4 * 1024,       # LPC810M021FN8
         0x00008110: 8 * 1024,       # LPC811M001JDH16
@@ -337,7 +342,6 @@ def dump_survivors(uart):
     Print a HEX dump of the first 80 bytes of RAM, which are preserved
     during reset and are useful for debugging.
     '''
-
     send_command(uart, "R {:d} {:d}".format(RAM_BASE_ADDRESS, RAM_SURVIVORS))
     ram_data = bytearray(uart.read(RAM_SURVIVORS))
     if len(ram_data) != RAM_SURVIVORS:
@@ -369,7 +373,6 @@ def read(uart, image_file):
     Read the contents of the whole flash memory and write it into a binary
     image file.
     '''
-
     flash_size = get_flash_size(uart)
 
     send_command(uart, "R {:d} {:d}".format(FLASH_BASE_ADDRESS, flash_size))
@@ -397,7 +400,7 @@ def erase(uart):
     send_command(uart, "E 0 {:d}".format(last_sector))
 
 
-def program(uart, image_file, allow_code_protection=False):
+def program(uart, image_file, allow_code_protection=False, progress_cb=None):
     '''
     Write the given binary (or IntelHex) image file into the flash memory.
 
@@ -414,7 +417,6 @@ def program(uart, image_file, allow_code_protection=False):
     The --erase command can be used before programming to erase the whole
     flash memory.
     '''
-
     hexfile = read_image_file(image_file)
     used_sectors = sorted(Counter(
         address // SECTOR_SIZE for address in hexfile.addresses()).keys())
@@ -467,7 +469,10 @@ def program(uart, image_file, allow_code_protection=False):
 
 
     # Program the image
-    for sector in used_sectors:
+    for index, sector in enumerate(used_sectors):
+        if progress_cb is not None:
+            progress_cb(float(index) / used_sectors.length())
+
         # Erase the sector
         send_command(uart, "P {sector:d} {sector:d}".format(sector=sector))
         send_command(uart, "E {sector:d} {sector:d}".format(sector=sector))
@@ -490,7 +495,6 @@ def compare(uart, image_file):
 
     Returns True on match and False on mismatch.
     '''
-
     hexfile = read_image_file(image_file)
     used_pages = sorted(Counter(
         address // PAGE_SIZE for address in hexfile.addresses()).keys())
@@ -524,7 +528,6 @@ def reset_mcu(uart):
     This code resets the ARM CPU by setting SYSRESETREQ. We load this
     program into RAM and run it with the "Go" command.
     '''
-
     reset_program = bytearray((
         0x01, 0x4a, 0x02, 0x4b, 0x1a, 0x60, 0x70, 0x47,
         0x04, 0x00, 0xfa, 0x05, 0x0c, 0xed, 0x00, 0xe0))
@@ -545,7 +548,6 @@ def parse_commandline():
     '''
     Parse command line arguments
     '''
-
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=__doc__)
@@ -565,7 +567,7 @@ def parse_commandline():
     parser.add_argument("-v", "--version",
         dest='version',
         action='store_true',
-        help="print the version number of this program and exit.")
+        help="show the version number of this program and exit.")
 
     info_group.add_argument("-j", "-i", "--id", "--part-id",
         dest='part_id',
@@ -628,23 +630,203 @@ def parse_commandline():
 
     args = parser.parse_args()
 
-    # Create a duplicate of the parsed args. Check if any flag is given
-    # (except --port). If none given print the help message and exit.
-    commands = dict(vars(args))
-    del commands['port']
-    if not any(commands.values()):
-        parser.print_help()
-        sys.exit(0)
-
     return args
 
 
+###############################################################################
+def gui(args):
+    ''' Run the programmer with a GUI '''
+    import Tkinter as tk
+    import ttk
+    import tkFileDialog
+
+    class Gui(ttk.Frame):
+        ''' Programmer graphical user interface '''
+
+        def __init__(self, master=None):
+            ttk.Frame.__init__(self, master)
+
+            self.root = master
+            self.root.title("LPC81x programmer")
+
+
+            # Widget variables
+            self.firmware_image = tk.StringVar()
+            self.port = tk.StringVar()
+            self.progress = tk.StringVar()
+
+
+            # Create the firmware selection frame
+            self.frm_firmware = ttk.LabelFrame(self, text="Firmware .hex file:")
+            self.lbl_filename = ttk.Label(self.frm_firmware,
+                textvariable=self.firmware_image)
+            self.btn_open = ttk.Button(self.frm_firmware, text="Select file...",
+                command=self.select_hex_file)
+
+
+            # Create the serial port selection frame
+            self.frm_port = ttk.LabelFrame(self, text="Serial port:")
+            self.cb_port = ttk.Combobox(self.frm_port, textvariable=self.port)
+
+
+            # Create the programming frame
+            self.frm_program = ttk.LabelFrame(self, text="Program:")
+            self.progressbar = ttk.Progressbar(self.frm_program, length=200,
+                orient=tk.HORIZONTAL, mode='determinate',
+                variable=self.progress)
+            self.btn_program = ttk.Button(self.frm_program, text="Program",
+                state=tk.DISABLED, command=self.program)
+            self.frm_messages = ttk.Frame(self.frm_program)
+            self.lbl_messages = tk.Text(self.frm_messages, height=5, width=60,
+                state=tk.DISABLED)
+            self.scr_messages = ttk.Scrollbar(self.frm_messages,
+                orient=tk.VERTICAL, command=self.lbl_messages.yview)
+            self.lbl_messages.config(yscrollcommand=self.scr_messages.set)
+
+
+            # Place all items in the grid
+            self.config(padding=(10, 10, 10, 10))
+            self.grid(row=0, column=0, sticky="nsew")
+
+            self.frm_firmware.grid(column=0, row=0, sticky="we")
+            self.frm_firmware.config(padding=(5, 0, 5, 5))
+            self.lbl_filename.grid(column=0, row=0, sticky="we")
+            self.btn_open.grid(column=1, row=0)
+
+            self.frm_port.grid(column=0, row=1, sticky="we", pady=10)
+            self.frm_port.config(padding=(5, 0, 5, 5))
+            self.cb_port.grid(column=0, row=0)
+
+            self.frm_program.grid(column=0, row=2, sticky="nsew")
+            self.progressbar.grid(column=0, row=0, sticky="we", padx=5)
+            self.btn_program.grid(column=1, row=0, padx=5, pady=5)
+            self.frm_messages.grid(column=0, row=1, columnspan=2, sticky="nsew",
+                padx=5, pady=5)
+            self.lbl_messages.grid(column=0, row=0, sticky="nsew")
+            self.scr_messages.grid(column=1, row=0, sticky="ns")
+
+
+            # Configure resize weights
+            self.root.columnconfigure(0, weight=1)
+            self.root.rowconfigure(0, weight=1)
+            self.columnconfigure(0, weight=1)
+            self.rowconfigure(2, weight=1)
+            self.frm_firmware.columnconfigure(0, weight=1)
+            self.frm_firmware.rowconfigure(0, weight=1)
+            self.frm_program.columnconfigure(0, weight=1)
+            self.frm_program.rowconfigure(1, weight=1)
+            self.frm_messages.columnconfigure(0, weight=1)
+            self.frm_messages.rowconfigure(0, weight=1)
+
+
+            # Set default values
+            self.firmware_image.set("(no file selected)")
+            self.progress.set(0)
+
+
+            self.add_message("LPC81x programmer successfully launched.")
+            self.root.after(1, self.check_ports)
+
+
+        def check_ports(self):
+            '''
+            Background task to populate the combo box with available serial
+            ports.
+
+            On Linux and Mac OS we use our own function, filtering USB-serial
+            dongles on Windows and using call-out devices on Mac OS.
+
+            For other platforms we use the function provided by py-serial
+            '''
+            serial_ports = []
+
+            if PLATFORM == 'Linux' or PLATFORM == 'Darwin':
+                path = "/dev/"
+                prefix = "ttyUSB"
+                if PLATFORM == "Darwin":
+                    prefix = "cu."
+
+                for filename in os.listdir(path):
+                    filepath = os.path.join(path, filename)
+                    if filename.startswith(prefix):
+                        serial_ports.append(filepath)
+
+            else:
+                for port, _, _ in sorted(serial.tools.list_ports.comports()):
+                    serial_ports.append(port)
+
+            self.cb_port.config(values=serial_ports)
+            if serial_ports and self.port.get() == "":
+                self.port.set(serial_ports[0])
+
+            self.root.after(1000, self.check_ports)
+
+
+        def select_hex_file(self):
+            ''' Let the user interactively select the hex file '''
+            fname = tkFileDialog.askopenfilename(filetypes=(
+                ("Firmware image files", "*.hex"),
+                ("All files", "*.*")))
+
+            if fname:
+                self.firmware_image.set(fname)
+                self.btn_program["state"] = tk.NORMAL
+                self.btn_program.focus()
+
+
+        def add_message(self, message):
+            '''
+            Add the given message to the log window and ensure it is seen
+            '''
+            self.lbl_messages.config(state=tk.NORMAL)
+            self.lbl_messages.insert('end', message + "\n")
+            self.lbl_messages.config(state=tk.DISABLED)
+            self.lbl_messages.see('end')
+
+
+        def progress_callback(self, percent):
+            ''' Callback function to update the progress bar '''
+            self.progress.set(percent * 100)
+
+
+        def program(self):
+            ''' Program the selected firmware image '''
+            with open(self.firmware_image.get()) as image_file:
+                try:
+                    uart = open_isp(args.port, args.wait)
+
+                    self.add_message("Programming ...")
+                    program(uart, image_file,
+                        progress_cb=self.progress_callback)
+
+                    self.add_message("Starting the program...")
+                    reset_mcu(uart)
+                    self.add_message("Done.")
+                    uart.close()
+
+                except ISPException as error:
+                    self.add_message(str(error))
+
+
+    app = Gui(master=tk.Tk())
+    app.mainloop()
+
+
+###############################################################################
 def main():
     '''
     Program the NXP LPC81x microcontrollers using ISP
     '''
-
     args = parse_commandline()
+
+    # Create a duplicate of the parsed args. Check if any flag is given
+    # (except --port). If none given launch the GUI.
+    commands = dict(vars(args))
+    del commands['port']
+    if not any(commands.values()):
+        gui(args)
+        sys.exit(0)
+
 
     if args.version:
         print(VERSION)
