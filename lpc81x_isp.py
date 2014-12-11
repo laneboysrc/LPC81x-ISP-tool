@@ -665,6 +665,9 @@ def gui(args):
 
             self.root = master
             self.root.title("LPC81x programmer")
+            if PLATFORM == 'Windows':
+                self.root.call('wm', 'iconbitmap', self.root._w, '-default',
+                    'laneboysrc.ico')
 
 
             # Widget variables
