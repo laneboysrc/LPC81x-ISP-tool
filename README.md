@@ -1,4 +1,4 @@
-# LPC81x-ISP-TOOL - yet another NXP LPC81x flash tool
+# LPC81x-ISP-TOOL - yet another NXP LPC810 / LPC811 / LPC812 flash tool
 
 ## Features
 
@@ -34,7 +34,9 @@ For programming a HEX file via GUI just launch the application without any comma
 
 For programming a HEX file from the command line, use the following example:
 
-        lpc81x_isp.py --wait --flash <firmware.hex> --run --port <usb-to-serial>
+```
+lpc81x_isp.py --wait --flash <firmware.hex> --run --port <usb-to-serial>
+```
 
 If the LPC MCU is not in ISP mode yet, the tool will wait and periodically probe the chip. After flashing the firmware, it will execute it.
 
@@ -45,6 +47,8 @@ Run ``lcp81x_isp.py --help`` to see all available command line arguments.
 
 How to build the Windows executable using py2exe:
 
-	python setup.py py2exe
+```
+python setup.py py2exe
+```
 
-Output is in the dist/ directory
+Output is in the *dist/* directory
