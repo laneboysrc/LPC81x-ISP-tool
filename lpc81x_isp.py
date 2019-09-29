@@ -22,7 +22,7 @@ Required 3rd party modules:
 #
 # E-mail: laneboysrc@gmail.com
 #
-# Tested with Python version 2.7
+# Tested with Python version 2.7 and 3.5
 
 
 # This is free and unencumbered software released into the public domain.
@@ -60,28 +60,12 @@ import os
 from time import sleep
 from collections import Counter
 
-try:
-    import serial
-    import serial.tools.list_ports
-except ImportError:
-    print("Missing the py-serial module. Please install it from\n"
-        "    http://sourceforge.net/projects/pyserial/\n")
-    raw_input("Press Enter to terminate this window...")
-    sys.exit(1)
-
-try:
-    from intelhex import IntelHex, HexRecordError
-except ImportError:
-    print("Missing the intelhex module. Please install it from\n"
-        "    https://launchpad.net/intelhex/\n")
-    raw_input("Press Enter to terminate this window...")
-    sys.exit(1)
+from intelhex import IntelHex, HexRecordError
 
 
-VERSION = "v1.3"
+VERSION = "v1.4"
 
 PLATFORM = platform.system()
-
 
 # Code Read Protection (CRP) address and patterns
 CRP_ADDRESS = 0x000002fc
@@ -110,6 +94,28 @@ RAM_SURVIVORS = 0x50
 FLASH_BASE_ADDRESS = 0x00000000
 PAGE_SIZE = 64
 SECTOR_SIZE = 1024
+
+
+def pause():
+    try:
+        raw_input("Press Enter to terminate this window...")
+    except NameError:
+        input("Press Enter to terminate this window...")
+
+
+try:
+    import serial
+    import serial.tools.list_ports
+except ImportError:
+    print("Missing the Python Serial module. Please install it from")
+    print("    http://sourceforge.net/projects/pyserial/\n")
+
+    if PLATFORM == 'Linux':
+        print("On Debian-based Linux distributions you should be able")
+        print("to install it with 'sudo apt install python-serial'\n")
+
+    pause()
+    sys.exit(1)
 
 
 class ISPException(Exception):
@@ -653,9 +659,16 @@ def parse_commandline():
 ###############################################################################
 def gui(args):
     ''' Run the programmer with a GUI '''
-    import Tkinter as tk
-    import ttk
-    import tkFileDialog
+    try:
+        import Tkinter as tk
+        import ttk
+        import tkFileDialog
+    except ImportError:
+        print('Graphical user interface not available as Tkinter module for '
+              'Python is not installed')
+        print('Run "lpc81x_isp.py -h" to show command line usage.')
+        pause()
+        sys.exit(1)
 
     class Gui(ttk.Frame):
         ''' Programmer graphical user interface '''
