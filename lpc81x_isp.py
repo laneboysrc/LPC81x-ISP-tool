@@ -390,7 +390,7 @@ def dump_survivors(uart):
 
 def read(uart, image_file):
     '''
-    Read the contents of the whole flash memory and write it into a binary
+    Read the contents of the whole flash memory and write it into a IntelHex
     image file.
     '''
     flash_size = get_flash_size(uart)
