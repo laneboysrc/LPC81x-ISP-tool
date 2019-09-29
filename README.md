@@ -16,7 +16,7 @@
 
 ## Info
 
-This tool is written in Python 2.7.
+This tool is compatible with Python 2.7 and 3.6+
 
 The tool requires the following 3rd party python modules:
 - py-serial [http://pyserial.sourceforge.net/](http://pyserial.sourceforge.net/)

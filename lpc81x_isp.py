@@ -400,7 +400,9 @@ def read(uart, image_file):
     if len(image_data) != flash_size:
         raise ISPException('ERROR: Failed to read the whole Flash memory')
 
-    image_file.write(image_data)
+    hexfile = IntelHex()
+    hexfile.frombytes(image_data)
+    hexfile.write_hex_file(image_file)
     image_file.close()
 
 
@@ -615,9 +617,9 @@ def parse_commandline():
 
     read_group.add_argument("-r", "--read",
         dest='read',
-        metavar='image.bin',
-        type=argparse.FileType('wb'),
-        help="read the MCU flash memory into a binary image file.")
+        metavar='image.hex',
+        type=argparse.FileType('wt'),
+        help="read the MCU flash memory into a IntelHex image file.")
 
     read_group.add_argument("-c", "--compare",
         dest='compare',
