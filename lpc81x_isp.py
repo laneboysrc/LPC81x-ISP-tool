@@ -662,9 +662,14 @@ def parse_commandline():
 def gui(args):
     ''' Run the programmer with a GUI '''
     try:
-        import Tkinter as tk
-        import ttk
-        import tkFileDialog
+        if sys.version_info[0] >= 3:
+        	import tkinter as tk
+        	import tkinter.ttk as ttk
+        	import tkinter.filedialog as tkFileDialog
+        else: 
+        	import Tkinter as tk
+        	import ttk
+        	import tkFileDialog
     except ImportError:
         print('Graphical user interface not available as Tkinter module for '
               'Python is not installed')
