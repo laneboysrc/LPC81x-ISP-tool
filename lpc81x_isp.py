@@ -22,7 +22,7 @@ Required 3rd party modules:
 #
 # E-mail: laneboysrc@gmail.com
 #
-# Tested with Python version 2.7 and 3.5
+# Tested with Python version 2.7 and 3.5+
 
 
 # This is free and unencumbered software released into the public domain.
@@ -94,6 +94,7 @@ RAM_SURVIVORS = 0x50
 FLASH_BASE_ADDRESS = 0x00000000
 PAGE_SIZE = 64
 SECTOR_SIZE = 1024
+
 
 
 def pause():
@@ -661,6 +662,12 @@ def parse_commandline():
 ###############################################################################
 def gui(args):
     ''' Run the programmer with a GUI '''
+
+    def resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(base_path, relative_path)
+
     try:
         if sys.version_info[0] >= 3:
         	import tkinter as tk
@@ -686,9 +693,10 @@ def gui(args):
             self.root = master
             self.root.title("LPC81x programmer")
             if PLATFORM == 'Windows':
-                self.root.call('wm', 'iconbitmap', self.root._w, '-default',
-                    'laneboysrc.ico')
-
+                try:
+                    self.root.call('wm', 'iconbitmap', self.root._w, '-default', resource_path('laneboysrc.ico'))
+                except tk.TclError:
+                    pass
 
             # Widget variables
             self.firmware_image = tk.StringVar()
