@@ -2,3 +2,4 @@ __pycache__
 *.pyc
 build/
 dist/
+.lpc81x_isp.last_used_dir

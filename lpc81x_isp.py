@@ -95,7 +95,7 @@ FLASH_BASE_ADDRESS = 0x00000000
 PAGE_SIZE = 64
 SECTOR_SIZE = 1024
 
-
+LAST_DIR_FILENAME = ".lpc81x_isp.last_used_dir"
 
 def pause():
     try:
@@ -673,7 +673,7 @@ def gui(args):
         	import tkinter as tk
         	import tkinter.ttk as ttk
         	import tkinter.filedialog as tkFileDialog
-        else: 
+        else:
         	import Tkinter as tk
         	import ttk
         	import tkFileDialog
@@ -812,11 +812,26 @@ def gui(args):
 
         def select_hex_file(self):
             ''' Let the user interactively select the hex file '''
-            fname = tkFileDialog.askopenfilename(filetypes=(
-                ("Firmware image files", "*.hex"),
-                ("All files", "*.*")))
+            try:
+                initial_dir = open(LAST_DIR_FILENAME).read()
+            except Exception:
+                # Catch all exceptions for this non-essential functionality
+                initial_dir = None
+
+            fname = tkFileDialog.askopenfilename(
+                initialdir=initial_dir,
+                filetypes=(
+                    ("Firmware image files", "*.hex"),
+                    ("All files", "*.*")))
 
             if fname:
+                last_used_dir, _ = os.path.split(fname)
+                try:
+                    open(LAST_DIR_FILENAME, 'w').write(last_used_dir)
+                except Exception:
+                    # Catch all exceptions for this non-essential functionality
+                    pass
+
                 self.firmware_image.set(fname)
                 self.btn_program["state"] = tk.NORMAL
                 self.btn_program.focus()
@@ -918,8 +933,7 @@ def main():
 
         if args.program:
             print("Programming ...")
-            bytes_written = program(uart, args.program,
-                args.allow_code_protection)
+            bytes_written = program(uart, args.program, args.allow_code_protection)
             print("Wrote {:d} bytes.".format(bytes_written))
 
         if args.go:
