@@ -306,7 +306,9 @@ def read_part_id(uart):
         0x00008110: "LPC811M001JDH16",
         0x00008120: "LPC812M101JDH16",
         0x00008121: "LPC812M101JD20",
-        0x00008122: "LPC812M101JDH20, LPC812M101JTB16"}
+        0x00008122: "LPC812M101JDH20, LPC812M101JTB16",
+        0x00008322: "LPC832M101FDH20"
+    }
 
     send_command(uart, "J")
     part_id = int(uart.readline().strip(), 10)
@@ -314,7 +316,7 @@ def read_part_id(uart):
     try:
         part_name = known_parts[part_id]
     except KeyError:
-        part_name = "unknown"
+        part_name = "unknown {:#010X}".format(part_id)
 
     return part_id, part_name
 
@@ -346,15 +348,16 @@ def get_flash_size(uart):
         0x00008110: 8 * 1024,       # LPC811M001JDH16
         0x00008120: 16 * 1024,      # PC812M101JDH16
         0x00008121: 16 * 1024,      # LPC812M101JD20
-        0x00008122: 16 * 1024}      # LPC812M101JDH20, LPC812M101JTB16
+        0x00008122: 16 * 1024,      # LPC812M101JDH20, LPC812M101JTB16
+        0x00008322: 16 * 1024       # LPC832M101FDH20
+    }
 
     part_id, _ = read_part_id(uart)
 
     try:
         return known_parts[part_id]
     except KeyError:
-        print ("WARNING: Unknown part identification {:#010X}. " +
-            "Using 4 KB as flash size.").format(part_id)
+        print("WARNING: Unknown part identification {:#010X}. Using 4 KB as flash size.".format(part_id))
         return 4 * 1024
 
 
@@ -452,7 +455,6 @@ def program(uart, image_file, allow_code_protection=False, progress_cb=None):
 
     # Ensure the image fits into the flash
     flash_size = get_flash_size(uart)
-    flash_size = 16384
     if hexfile.maxaddr() >= flash_size:
         raise ISPException('ERROR: image too large for the flash memory size')
 
@@ -858,6 +860,9 @@ def gui(args):
             with open(self.firmware_image.get()) as image_file:
                 try:
                     uart = open_isp(self.port.get())
+
+                    _, part_name = read_part_id(uart)
+                    self.add_message("MCU part number: {}".format(part_name))
 
                     self.add_message("Programming ...")
                     program(uart, image_file,
