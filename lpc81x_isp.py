@@ -63,7 +63,7 @@ from collections import Counter
 from intelhex import IntelHex, HexRecordError
 
 
-VERSION = "v1.4"
+VERSION = "v1.5"
 
 PLATFORM = platform.system()
 
