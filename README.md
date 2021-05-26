@@ -43,6 +43,17 @@ If the LPC MCU is not in ISP mode yet, the tool will wait and periodically probe
 Run ``lcp81x_isp.py --help`` to see all available command line arguments.
 
 
+## Pyinstaller info
+
+How to build the Windows executable using [pyinstaller](https://www.pyinstaller.org/):
+
+```
+pip install pyinstaller
+
+pyinstaller lpc81x_isp.spec
+```
+
+
 ## Py2exe info
 
 How to build the Windows executable using py2exe:
@@ -52,3 +63,4 @@ python setup.py py2exe
 ```
 
 Output is in the *dist/* directory
+
