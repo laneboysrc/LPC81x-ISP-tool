@@ -1,4 +1,4 @@
-# LPC81x-ISP-TOOL - yet another NXP LPC810 / LPC811 / LPC812 flash tool
+# LPC81x-ISP-TOOL - yet another NXP LPC810 / LPC811 / LPC812 / LPC832 flash tool
 
 ## Features
 
@@ -25,7 +25,7 @@ The tool requires the following 3rd party python modules:
 
 It is designed for command-line usage in a makefile, but also has a simplistic GUI for programming.
 
-A Windows executable is in [lpc81x-isp-windows.zip](lpc81x-isp-windows.zip) so Windows users don't need to install Python and respetive modules.
+A Windows executable is in [lpc81x-isp-windows.zip](lpc81x-isp-windows-64bit.zip) so Windows users don't need to install Python and respetive modules.
 
 
 ## Usage
