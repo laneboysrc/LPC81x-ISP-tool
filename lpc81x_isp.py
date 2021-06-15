@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 '''
 Access the NXP LPC81x microcontroller via ISP boot code using a
 serial port (UART).
@@ -13,8 +13,9 @@ Rev. 1.6 of the LPC81x User manual (UM10601.pdf) for details.
 This utility allows access to most of the ISP functions.
 
 Required 3rd party modules:
-    py-serial   http://sourceforge.net/projects/pyserial/
-    intelhex    https://launchpad.net/intelhex/
+    pyserial
+    intelhex
+    tk (for GUI usage; not required for command line usage)
 
 '''
 
@@ -22,7 +23,7 @@ Required 3rd party modules:
 #
 # E-mail: laneboysrc@gmail.com
 #
-# Tested with Python version 2.7 and 3.5+
+# Tested with Python version 3.6.9
 
 
 # This is free and unencumbered software released into the public domain.
@@ -50,9 +51,6 @@ Required 3rd party modules:
 #
 # For more information, please refer to <http://unlicense.org>
 
-from __future__ import print_function
-from __future__ import division
-
 import sys
 import argparse
 import platform
@@ -60,10 +58,10 @@ import os
 from time import sleep
 from collections import Counter
 
-from intelhex import IntelHex, HexRecordError
 
 
-VERSION = "v1.5"
+
+VERSION = "v1.6"
 
 PLATFORM = platform.system()
 
@@ -105,11 +103,19 @@ def pause():
 
 
 try:
+    from intelhex import IntelHex, HexRecordError
+except ImportError:
+    print("Missing the IntelHex module. Please install as follows:")
+    print("    python3 -mpip install intelhex\n")
+    pause()
+    sys.exit(1)
+
+try:
     import serial
     import serial.tools.list_ports
 except ImportError:
-    print("Missing the Python Serial module. Please install it from")
-    print("    http://sourceforge.net/projects/pyserial/\n")
+    print("Missing the Python Serial module. Please install as follows:")
+    print("    python3 -mpip install pyserial\n")
 
     if PLATFORM == 'Linux':
         print("On Debian-based Linux distributions you should be able")
@@ -681,8 +687,10 @@ def gui(args):
         	import tkFileDialog
     except ImportError:
         print('Graphical user interface not available as Tkinter module for '
-              'Python is not installed')
-        print('Run "lpc81x_isp.py -h" to show command line usage.')
+              'Python is not installed\n\n')
+        print('Run "lpc81x_isp.py -h" to show command line usage.\n\n')
+        print("You can install Tkinter as follows:")
+        print("    python3 -mpip install tk\n")
         pause()
         sys.exit(1)
 

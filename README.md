@@ -14,21 +14,25 @@
 ![LPC81x-ISP-tool screenshot](lpc81x_isp-screenshot.png "LPC81x-ISP-tool screenshot")
 
 
-## Info
-
-This tool is compatible with Python 2.7 and 3.6+
-
-The tool requires the following 3rd party python modules:
-- py-serial [http://pyserial.sourceforge.net/](http://pyserial.sourceforge.net/)
-- intelhex [https://launchpad.net/intelhex/](https://launchpad.net/intelhex/)
-
-
-It is designed for command-line usage in a makefile, but also has a simplistic GUI for programming.
+## Installation
 
 A Windows executable is in [lpc81x-isp-windows.zip](lpc81x-isp-windows-64bit.zip) so Windows users don't need to install Python and respetive modules.
 
+Alternatively, install Python from [https://www.python.org/](https://www.python.org/).
+
+This tool is compatible with Python 3.6+
+
+The tool requires the following 3rd party python modules:
+- pyserial
+- intelhex
+- tk (optional)
+
+`tk` is required for GUI (graphical user interface] usage; but not necessary  for command line usage.
+
 
 ## Usage
+
+This tool is designed for command-line usage in a makefile, but also has a simplistic GUI.
 
 For programming a HEX file via GUI just launch the application without any command line arguments.
 
