@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 '''
-Access the NXP LPC81x microcontroller via ISP boot code using a
+Access the NXP LPC8xx microcontroller via ISP boot code using a
 serial port (UART).
 
-The LPC81x devices contain a bootloader that allows certain device
+The LPC8xx devices contain a bootloader that allows certain device
 functions such as reading IDs, and reading / erasing / writing of the
 flash memory. This is referred to as "ISP" in the device documentation.
 
@@ -16,6 +16,13 @@ Required 3rd party modules:
     pyserial
     intelhex
     tk (for GUI usage; not required for command line usage)
+
+Tested with the following devices:
+
+LPC810 (SO8)
+LPC812 (TSSOP16, XSON16, TSSOP20)
+LPC824 (TSSOP20)
+LPC832 (TSSOP20)
 
 '''
 
@@ -277,6 +284,7 @@ def read_image_file(image_file):
 
     except HexRecordError:
         # Not a valid HEX file, so assume we are dealing with a binary image
+        # WARNING: binary images do no longer work in Python3
         image_file.seek(0)
         hexfile.fromfile(image_file, format='bin')
 
@@ -313,7 +321,12 @@ def read_part_id(uart):
         0x00008120: "LPC812M101JDH16",
         0x00008121: "LPC812M101JD20",
         0x00008122: "LPC812M101JDH20, LPC812M101JTB16",
-        0x00008322: "LPC832M101FDH20"
+        0x00008221: "LPC822M101JHI33",
+        0x00008222: "LPC822M101JDH20",
+        0x00008241: "LPC824M201JHI33",
+        0x00008242: "LPC824M201JDH20",
+        0x00008322: "LPC832M101FDH20",
+        0x00008341: "LPC8341201FHI33",
     }
 
     send_command(uart, "J")
@@ -355,7 +368,12 @@ def get_flash_size(uart):
         0x00008120: 16 * 1024,      # PC812M101JDH16
         0x00008121: 16 * 1024,      # LPC812M101JD20
         0x00008122: 16 * 1024,      # LPC812M101JDH20, LPC812M101JTB16
-        0x00008322: 16 * 1024       # LPC832M101FDH20
+        0x00008221: 16 * 1024,      # LPC822M101JHI33
+        0x00008222: 16 * 1024,      # LPC822M101JDH20
+        0x00008241: 32 * 1024,      # LPC824M201JHI33
+        0x00008242: 32 * 1024,      # LPC824M201JDH20
+        0x00008322: 16 * 1024,      # LPC832M101FDH20
+        0x00008341: 32 * 1024,      # LPC8341201FHI33
     }
 
     part_id, _ = read_part_id(uart)
@@ -632,9 +650,9 @@ def parse_commandline():
 
     read_group.add_argument("-c", "--compare",
         dest='compare',
-        metavar='image.bin',
-        type=argparse.FileType('rb'),
-        help="compare a binary image with MCU flash memory.")
+        metavar='image.hex',
+        type=argparse.FileType('r'),
+        help="compare an IntelHex image file with MCU flash memory.")
 
     write_group.add_argument("-e", "--erase",
         dest='erase',
@@ -643,9 +661,9 @@ def parse_commandline():
 
     write_group.add_argument("-f", "-w", "--flash", "--write", "--program",
         dest='program',
-        metavar='image.bin',
-        type=argparse.FileType('rb'),
-        help="write a binary (or IntelHex) image to the MCU flash memory.")
+        metavar='image.hex',
+        type=argparse.FileType('r'),
+        help="write an IntelHex image file to the MCU flash memory.")
 
     write_group.add_argument("--allow-code-protection",
         action='store_true',
